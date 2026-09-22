@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phát hiện té ngã</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f6feb">
+<style>
+  :root {
+    --nen: #f5f7fb; --the: #ffffff; --chu: #16202e; --phu: #5b6778; --vien: #dde3ec;
+    --lam: #1f6feb; --do: #d93025; --xanh: #188038; --luoi: #e6ebf2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --nen: #0f141b; --the: #18202b; --chu: #e8edf4; --phu: #9aa6b6; --vien: #2a3442;
+      --lam: #5b9dff; --do: #ff6b5e; --xanh: #4cc36f; --luoi: #222c39; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--nen); color: var(--chu);
+    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px
+    calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 21px; margin: 4px 0 2px; }
+  .mo-ta { color: var(--phu); font-size: 14px; margin: 0 0 14px; }
+  .nut { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { min-height: 50px; padding: 0 18px; border-radius: 12px; font: inherit; font-weight: 700;
+    border: 1.5px solid var(--lam); background: var(--lam); color: #fff; }
+  button.phu { background: transparent; color: var(--lam); }
+  button:disabled { opacity: .4; }
+  .trang-thai { font-size: 14px; color: var(--phu); min-height: 20px; margin-bottom: 10px; }
+  .trang-thai.loi { color: var(--do); font-weight: 600; }
+  .so { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .o { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 12px; }
+  .o .nhan { font-size: 12px; color: var(--phu); }
+  .o .gt { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .o .gt small { font-size: 13px; font-weight: 600; color: var(--phu); }
+  .bieu-do { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 8px; }
+  canvas { display: block; width: 100%; height: 260px; }
+  .chu-giai { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--phu); margin: 6px 4px 0; }
+  .chu-giai i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
+  .ghi-chu { font-size: 13px; color: var(--phu); margin-top: 14px; }
+  .ghi-chu code { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Phát hiện té ngã — trang 1</h1>
+  <p class="mo-ta">Đọc gia tốc kế của iPhone và vẽ độ lớn gia tốc |a| theo thời gian thực. Chưa có bộ phát hiện — đây là bước kiểm cảm biến và đơn vị.</p>
+
+  <div class="nut">
+    <button id="batDau">Bắt đầu đo</button>
+    <button id="giaLap" class="phu">Giả lập (không cần cảm biến)</button>
+    <button id="dung" class="phu" disabled>Dừng</button>
+  </div>
+  <div id="trangThai" class="trang-thai">Bấm "Bắt đầu đo" và cho phép truy cập chuyển động.</div>
+
+  <div class="so">
+    <div class="o"><div class="nhan">|a| hiện tại</div><div class="gt" id="soHienTai">—</div></div>
+    <div class="o"><div class="nhan">đỉnh 10 s qua</div><div class="gt" id="soDinh">—</div></div>
+    <div class="o"><div class="nhan">tần số mẫu</div><div class="gt" id="soTanSo">—</div></div>
+  </div>
+
+  <div class="bieu-do">
+    <canvas id="bieuDo"></canvas>
+    <div class="chu-giai">
+      <span><i style="border-color: var(--lam)"></i>|a| (g)</span>
+      <span><i style="border-color: var(--xanh); border-top-style: dashed"></i>1 g — đứng yên</span>
+      <span><i style="border-color: var(--do); border-top-style: dashed"></i>ngưỡng va chạm (tạm, 2,5 g)</span>
+    </div>
+  </div>
+
+  <p class="ghi-chu">
+    |a| = √(ax² + ay² + az²), lấy từ <code>accelerationIncludingGravity</code> (m/s²) rồi chia 9,80665 để ra g.
+    Đứng yên thì |a| ≈ 1 g vì cảm biến luôn đo trọng lực. Rơi tự do thì |a| tụt về gần 0, va chạm thì vọt lên vài g.
+  </p>
+</main>
+
+<script>
+const G = 9.80665;
+const CUA_SO_GIAY = 10;          // biểu đồ hiển thị 10 s gần nhất
+const NGUONG_TAM = 2.5;          // chỉ để vẽ, chưa dùng để phát hiện
+const mau = [];                  // {t: ms, a: g}
+
+const $ = id => document.getElementById(id);
+const canvas = $('bieuDo'), ctx = canvas.getContext('2d');
+let dangDo = false, giaLapTimer = null, khoaMan = null, lanCuoiCoMau = 0, henKiem = null;
+
+function baoTrangThai(chu, loi = false) {
+  $('trangThai').textContent = chu;
+  $('trangThai').classList.toggle('loi', loi);
+}
+
+function themMau(t, a) {
+  mau.push({ t, a });
+  lanCuoiCoMau = t;
+  while (mau.length && t - mau[0].t > CUA_SO_GIAY * 1000) mau.shift();
+}
+
+function khiCoChuyenDong(e) {
+  const g = e.accelerationIncludingGravity;
+  if (!g || g.x == null) return;
+  const a = Math.hypot(g.x, g.y, g.z) / G;
+  themMau(performance.now(), a);
+}
+
+async function giuManSang() {
+  try { if ('wakeLock' in navigator) khoaMan = await navigator.wakeLock.request('screen'); } catch (_) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (dangDo && document.visibilityState === 'visible') giuManSang();
+});
+
+async function batDau() {
+  if (typeof DeviceMotionEvent === 'undefined') {
+    baoTrangThai('Trình duyệt này không có cảm biến chuyển động. Dùng nút "Giả lập" để thử.', true);
+    return;
+  }
+  if (!window.isSecureContext) {
+    baoTrangThai('Trang phải chạy qua HTTPS thì iPhone mới cho đọc cảm biến.', true);
+    return;
+  }
+  // iOS 13+: phải xin quyền ngay trong sự kiện bấm nút
+  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const kq = await DeviceMotionEvent.requestPermission();
+      if (kq !== 'granted') { baoTrangThai('Bạn đã từ chối quyền chuyển động. Vào Cài đặt > Safari để cho phép lại.', true); return; }
+    } catch (err) { baoTrangThai('Không xin được quyền: ' + err.message, true); return; }
+  }
+  dungHet();
+  window.addEventListener('devicemotion', khiCoChuyenDong);
+  batDauChung('Đang đo — thử lắc nhẹ điện thoại.');
+  henKiem = setTimeout(() => {
+    if (dangDo && !giaLapTimer && performance.now() - lanCuoiCoMau > 1500)
+      baoTrangThai('Không nhận được dữ liệu cảm biến. Máy tính thường không có gia tốc kế — hãy mở trang trên iPhone, hoặc bấm "Giả lập".', true);
+  }, 2000);
+}
+
+// Tín hiệu giả: đi bộ ~1,8 bước/s, cứ 12 s có một cú "té": rơi tự do → va chạm → nằm yên
+function giaLap() {
+  dungHet();
+  const t0 = performance.now();
+  giaLapTimer = setInterval(() => {
+    const t = (performance.now() - t0) / 1000, pha = t % 12;
+    let a;
+    if (pha < 8)          a = 1 + 0.28 * Math.sin(2 * Math.PI * 1.8 * t) + 0.06 * (Math.random() - 0.5);
+    else if (pha < 8.35)  a = 0.25 + 0.05 * Math.random();                      // rơi tự do
+    else if (pha < 8.5)   a = 3.2 + 0.8 * Math.random();                        // va chạm
+    else if (pha < 8.8)   a = 1 + 0.9 * Math.sin(40 * t) * Math.exp(-(pha - 8.5) * 8); // dội
+    else                  a = 1 + 0.015 * (Math.random() - 0.5);                // nằm yên
+    themMau(performance.now(), a);
+  }, 1000 / 60);
+  batDauChung('Đang giả lập 60 Hz — mỗi 12 s có một cú té giả.');
+}
+
+function batDauChung(chu) {
+  dangDo = true;
+  $('dung').disabled = false;
+  baoTrangThai(chu);
+  giuManSang();
+}
+
+function dungHet() {
+  window.removeEventListener('devicemotion', khiCoChuyenDong);
+  clearInterval(giaLapTimer); giaLapTimer = null;
+  clearTimeout(henKiem);
+  if (khoaMan) { khoaMan.release().catch(() => {}); khoaMan = null; }
+  dangDo = false;
+  mau.length = 0;
+  $('dung').disabled = true;
+}
+
+$('batDau').addEventListener('click', batDau);
+$('giaLap').addEventListener('click', giaLap);
+$('dung').addEventListener('click', () => { dungHet(); baoTrangThai('Đã dừng.'); });
+
+function mauCss(ten) { return getComputedStyle(document.documentElement).getPropertyValue(ten).trim(); }
+
+function ve() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const trai = 34, duoi = 18, tren = 6, rong = w - trai - 6, cao = h - duoi - tren;
+  const dinh = mau.reduce((m, p) => Math.max(m, p.a), 0);
+  const yMax = Math.max(4, Math.ceil(dinh + 0.5));
+  const Y = a => tren + cao * (1 - a / yMax);
+  const bay = performance.now();
+  const X = t => trai + rong * (1 - (bay - t) / (CUA_SO_GIAY * 1000));
+
+  ctx.font = '11px -apple-system, Segoe UI, sans-serif';
+  ctx.fillStyle = mauCss('--phu'); ctx.strokeStyle = mauCss('--luoi'); ctx.lineWidth = 1;
+  for (let g = 0; g <= yMax; g++) {
+    ctx.beginPath(); ctx.moveTo(trai, Y(g)); ctx.lineTo(trai + rong, Y(g)); ctx.stroke();
+    ctx.fillText(g + ' g', 4, Y(g) + 4);
+  }
+  for (let s = 0; s <= CUA_SO_GIAY; s += 2) {
+    const con = CUA_SO_GIAY - s;
+    ctx.textAlign = con === 0 ? 'right' : 'center';
+    ctx.fillText(con === 0 ? 'bây giờ' : '−' + con + 's', X(bay - con * 1000), h - 4);
+  }
+  ctx.textAlign = 'left';
+
+  const duongNgang = (a, mau_, net) => {
+    ctx.save(); ctx.setLineDash(net); ctx.strokeStyle = mau_; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(trai, Y(a)); ctx.lineTo(trai + rong, Y(a)); ctx.stroke(); ctx.restore();
+  };
+  duongNgang(1, mauCss('--xanh'), [5, 4]);
+  duongNgang(NGUONG_TAM, mauCss('--do'), [5, 4]);
+
+  if (mau.length > 1) {
+    ctx.strokeStyle = mauCss('--lam'); ctx.lineWidth = 2; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    mau.forEach((p, i) => i ? ctx.lineTo(X(p.t), Y(p.a)) : ctx.moveTo(X(p.t), Y(p.a)));
+    ctx.stroke();
+
+    const cuoi = mau[mau.length - 1];
+    $('soHienTai').innerHTML = cuoi.a.toFixed(2) + ' <small>g</small>';
+    $('soDinh').innerHTML = dinh.toFixed(2) + ' <small>g</small>';
+    $('soDinh').style.color = dinh >= NGUONG_TAM ? mauCss('--do') : '';
+    const giay = (cuoi.t - mau[0].t) / 1000;
+    if (giay > 1) $('soTanSo').innerHTML = Math.round((mau.length - 1) / giay) + ' <small>Hz</small>';
+  } else if (!dangDo) {
+    ['soHienTai', 'soDinh', 'soTanSo'].forEach(id => { $(id).textContent = '—'; $(id).style.color = ''; });
+  }
+  requestAnimationFrame(ve);
+}
+requestAnimationFrame(ve);
+</script>
+</body>
+</html>
