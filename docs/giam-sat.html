@@ -104,8 +104,8 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
-<script src="chung.js?v=3"></script>
-<script src="phat-hien.js?v=3"></script>
+<script src="chung.js?v=4"></script>
+<script src="phat-hien.js?v=4"></script>
 <script>
 const $ = id => document.getElementById(id);
 const mau = [];                    // {t: giờ nhận trên máy này (ms), a: g}
@@ -119,19 +119,24 @@ ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang
 
 function khiCoTin(chuDe, goi) {
   const bay = performance.now();
+  // Gói hay đến dồn cục khi mạng giật. Đặt mẫu theo GIỜ GỬI của điện thoại (trừ phần trễ vượt mức thấp nhất),
+  // không theo giờ nhận — nếu không, gói đến muộn bị vẽ lùi về quá khứ và đường vẽ gấp khúc ngược.
+  const tre = Date.now() - goi.ts;                       // gồm cả chênh đồng hồ hai máy
+  const treDu = treGanDay.length ? Math.max(0, tre - Math.min(...treGanDay)) : 0;
   if (chuDe === 'a' && Array.isArray(goi.a)) {
     const n = goi.a.length, dt = goi.dt || 1000 / 60;
-    goi.a.forEach((a, i) => mau.push({ t: bay - (n - 1 - i) * dt, a }));
+    goi.a.forEach((a, i) => mau.push({ t: bay - treDu - (n - 1 - i) * dt, a }));
+    mau.sort((p, q) => p.t - q.t);
     catMau(mau, bay);
     goiGanDay.push({ t: bay, n });
     while (goiGanDay.length && bay - goiGanDay[0].t > 2000) goiGanDay.shift();
-    treGanDay.push(Date.now() - goi.ts);
+    treGanDay.push(tre);
     if (treGanDay.length > 30) treGanDay.shift();
     lanNhanCuoi = bay;
     return;
   }
-  // sự kiện của bộ phát hiện: vạch va chạm + vạch kết luận (lệch thêm ~độ trễ mạng, không đáng kể)
-  if (goi.truoc != null) dau.push({ t: bay - goi.truoc, loai: 'va-cham' }, { t: bay - goi.truocKetLuan, loai: goi.loai });
+  // sự kiện của bộ phát hiện: vạch va chạm + vạch kết luận
+  if (goi.truoc != null) dau.push({ t: bay - treDu - goi.truoc, loai: 'va-cham' }, { t: bay - treDu - goi.truocKetLuan, loai: goi.loai });
   if (chuDe === 'su-kien') ghiNhatKy(goi, 'bo-qua');
   else if (chuDe === 'canh-bao') {
     if (goi.loai === 'huy') { tatCoi(); ghiNhatKy(goi, 'huy'); }
