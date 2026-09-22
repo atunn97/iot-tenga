@@ -47,6 +47,9 @@
   h2 { font-size: 15px; margin: 18px 0 6px; }
   ol { margin: 0; padding-left: 22px; font-size: 14px; font-variant-numeric: tabular-nums; }
   .trong { color: var(--phu); font-size: 14px; }
+  li.te { color: var(--do); font-weight: 700; }
+  li.bo-qua, li.huy { color: var(--phu); }
+  .dem { font-weight: 400; font-size: 13px; color: var(--phu); margin-left: 8px; }
   .ghi-chu { font-size: 13px; color: var(--phu); margin-top: 16px; }
 </style>
 </head>
@@ -82,34 +85,41 @@
     <div class="chu-giai">
       <span><i style="border-color: var(--lam)"></i>|a| (g) nhận từ điện thoại</span>
       <span><i style="border-color: var(--xanh); border-top-style: dashed"></i>1 g — đứng yên</span>
-      <span><i style="border-color: var(--do); border-top-style: dashed"></i>ngưỡng va chạm (tạm, 2,5 g)</span>
+      <span><i style="border-color: var(--do); border-top-style: dashed"></i>① ngưỡng va chạm 2,5 g</span>
+      <span><i style="border-color: var(--vang); border-top-style: dotted"></i>va chạm</span>
+      <span><i style="border-color: var(--do); border-top-width: 3px"></i>té</span>
+      <span><i style="border-color: var(--phu); border-top-style: dotted"></i>bỏ qua</span>
     </div>
   </div>
 
-  <h2>Nhật ký cảnh báo</h2>
-  <ol id="nhatKy"><li class="trong">Chưa có cảnh báo nào.</li></ol>
+  <h2>Nhật ký sự kiện <span class="dem" id="demSuKien"></span></h2>
+  <ol id="nhatKy"><li class="trong">Chưa có sự kiện nào.</li></ol>
 
   <p class="ghi-chu">
-    Đường đi: iPhone đo gia tốc → gom 100 ms một gói → MQTT (broker công cộng, qua wss) → trang này vẽ lại.
+    Đường đi: iPhone đo gia tốc → <b>tự phát hiện té ngay trên máy</b> (luật 3 bước: ① va chạm ≥ 2,5 g → ② nằm yên → ③ tư thế đổi ≥ 60°)
+    → MQTT (broker công cộng, qua wss) → trang này vẽ lại và báo động. Va chạm mà không nằm yên (lắc, nhảy) bị loại và chỉ ghi nhật ký.
     Độ trễ = giờ nhận trên máy này − giờ gửi trên điện thoại, nên lệch theo độ chênh đồng hồ giữa hai máy (thường dưới 0,1 s).
-    Bộ phát hiện té chưa có: cảnh báo hiện giờ chỉ đến từ nút "Thử cảnh báo" trên điện thoại.
+    Ngưỡng hiện lấy theo tài liệu, chưa dò trên bộ dữ liệu SisFall.
   </p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
-<script src="chung.js?v=2"></script>
+<script src="chung.js?v=3"></script>
+<script src="phat-hien.js?v=3"></script>
 <script>
 const $ = id => document.getElementById(id);
 const mau = [];                    // {t: giờ nhận trên máy này (ms), a: g}
+const dau = [];                    // {t, loai} — vạch sự kiện trên biểu đồ
 const goiGanDay = [];              // {t, n} — để tính tần số nhận
 const treGanDay = [];              // ms
+const dem = { te: 0, 'bo-qua': 0, huy: 0 };
 let lanNhanCuoi = 0, amThanh = null, coiTimer = null, nhatKyTrong = true;
 
 ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; }, khiCoTin);
 
-function khiCoTin(loai, goi) {
+function khiCoTin(chuDe, goi) {
   const bay = performance.now();
-  if (loai === 'a' && Array.isArray(goi.a)) {
+  if (chuDe === 'a' && Array.isArray(goi.a)) {
     const n = goi.a.length, dt = goi.dt || 1000 / 60;
     goi.a.forEach((a, i) => mau.push({ t: bay - (n - 1 - i) * dt, a }));
     catMau(mau, bay);
@@ -118,22 +128,39 @@ function khiCoTin(loai, goi) {
     treGanDay.push(Date.now() - goi.ts);
     if (treGanDay.length > 30) treGanDay.shift();
     lanNhanCuoi = bay;
-  } else if (loai === 'canh-bao') {
-    baoDong(goi);
+    return;
+  }
+  // sự kiện của bộ phát hiện: vạch va chạm + vạch kết luận (lệch thêm ~độ trễ mạng, không đáng kể)
+  if (goi.truoc != null) dau.push({ t: bay - goi.truoc, loai: 'va-cham' }, { t: bay - goi.truocKetLuan, loai: goi.loai });
+  if (chuDe === 'su-kien') ghiNhatKy(goi, 'bo-qua');
+  else if (chuDe === 'canh-bao') {
+    if (goi.loai === 'huy') { tatCoi(); ghiNhatKy(goi, 'huy'); }
+    else { baoDong(goi); }
   }
 }
 
-function baoDong(goi) {
+function dongMoTa(goi) {
   const gio = new Date(goi.ts || Date.now()).toLocaleTimeString('vi-VN');
-  const chu = (goi.noiDung || 'Phát hiện té ngã') + ' · lúc ' + gio;
-  $('chuCanhBao').textContent = chu;
-  $('canhBao').classList.add('hien');
+  return gio + ' — ' + (goi.lyDo ? moTaSuKien(goi) : goi.noiDung);
+}
+
+function ghiNhatKy(goi, loai) {
   if (nhatKyTrong) { $('nhatKy').innerHTML = ''; nhatKyTrong = false; }
   const li = document.createElement('li');
-  li.textContent = chu;
+  li.textContent = dongMoTa(goi);
+  li.className = loai;
   $('nhatKy').prepend(li);
+  if (dem[loai] != null) dem[loai]++;
+  $('demSuKien').textContent = 'té: ' + dem.te + ' · bị loại: ' + dem['bo-qua'] + ' · người dùng huỷ: ' + dem.huy;
+}
+
+function baoDong(goi) {
+  $('chuCanhBao').textContent = dongMoTa(goi);
+  $('canhBao').classList.add('hien');
+  ghiNhatKy(goi, goi.loai === 'te' ? 'te' : 'thu');
   batCoi();
 }
+function tatCoi() { clearInterval(coiTimer); $('canhBao').classList.remove('hien'); }
 
 // Âm thanh: trình duyệt chỉ cho phát sau khi người dùng bấm vào trang một lần
 $('batAm').addEventListener('click', () => {
@@ -153,14 +180,14 @@ function tiengBip() {
   o.start(); o.stop(amThanh.currentTime + 0.35);
 }
 function batCoi() { clearInterval(coiTimer); tiengBip(); coiTimer = setInterval(tiengBip, 700); }
-$('daXuLy').addEventListener('click', () => { clearInterval(coiTimer); $('canhBao').classList.remove('hien'); });
+$('daXuLy').addEventListener('click', tatCoi);
 
 function trungVi(ds) { const s = [...ds].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
 
 function ve() {
   const bay = performance.now();
-  catMau(mau, bay);
-  const dinh = veBieuDo($('bieuDo'), mau);
+  catMau(mau, bay); catMau(dau, bay);
+  const dinh = veBieuDo($('bieuDo'), mau, dau);
   const im = lanNhanCuoi ? (bay - lanNhanCuoi) / 1000 : Infinity;
 
   if (im < 1.5) {

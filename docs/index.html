@@ -45,12 +45,27 @@
   .ghi-chu { font-size: 13px; color: var(--phu); margin-top: 14px; }
   .ghi-chu code { font-size: 12px; }
   a { color: var(--lam); }
+  .phat-hien { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+  .phat-hien .dau { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .phat-hien label { color: var(--phu); font-size: 13px; }
+  .phat-hien ol { margin: 6px 0 0; padding-left: 20px; color: var(--phu); font-size: 13px; }
+  .phat-hien li.te { color: var(--do); font-weight: 700; }
+  .bao-te { display: none; background: var(--do); color: #fff; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  .bao-te.hien { display: block; }
+  .bao-te .lon { font-size: 22px; font-weight: 800; }
+  .bao-te button { margin-top: 10px; background: #fff; color: var(--do); border-color: #fff; }
 </style>
 </head>
 <body>
 <main>
   <h1>Phát hiện té ngã — điện thoại</h1>
-  <p class="mo-ta">Đọc gia tốc kế, vẽ độ lớn gia tốc |a| và gửi lên trang giám sát trên máy tính qua MQTT. Chưa có bộ phát hiện — đây là bước nối cảm biến với mạng.</p>
+  <p class="mo-ta">Đọc gia tốc kế, tự phát hiện té bằng luật 3 bước ngay trên điện thoại, và gửi dữ liệu + cảnh báo lên trang giám sát trên máy tính qua MQTT.</p>
+
+  <div id="baoTe" class="bao-te" role="alert">
+    <div class="lon">⚠ Đã phát hiện té ngã</div>
+    <div id="chuBaoTe">Đã gửi cảnh báo lên máy tính.</div>
+    <button id="toiOn">Tôi ổn — huỷ cảnh báo</button>
+  </div>
 
   <div class="nut">
     <button id="batDau">Bắt đầu đo</button>
@@ -60,6 +75,14 @@
   </div>
   <div id="trangThai" class="trang-thai">Bấm "Bắt đầu đo" và cho phép truy cập chuyển động.</div>
   <div class="mang"><span id="chamMang" class="cham"></span><span id="chuMang">chưa nối mạng</span> · đã gửi <b id="soGui">0</b> gói</div>
+
+  <div class="phat-hien">
+    <div class="dau">
+      <b id="chuPhatHien">Bộ phát hiện: chưa chạy</b>
+      <label><input type="checkbox" id="kiemTuThe" checked> ③ kiểm tư thế</label>
+    </div>
+    <ol id="nhatKyPhatHien"></ol>
+  </div>
 
   <div class="so">
     <div class="o"><div class="nhan">|a| hiện tại</div><div class="gt" id="soHienTai">—</div></div>
@@ -72,7 +95,10 @@
     <div class="chu-giai">
       <span><i style="border-color: var(--lam)"></i>|a| (g)</span>
       <span><i style="border-color: var(--xanh); border-top-style: dashed"></i>1 g — đứng yên</span>
-      <span><i style="border-color: var(--do); border-top-style: dashed"></i>ngưỡng va chạm (tạm, 2,5 g)</span>
+      <span><i style="border-color: var(--do); border-top-style: dashed"></i>① ngưỡng va chạm 2,5 g</span>
+      <span><i style="border-color: var(--vang); border-top-style: dotted"></i>va chạm</span>
+      <span><i style="border-color: var(--do); border-top-width: 3px"></i>té</span>
+      <span><i style="border-color: var(--phu); border-top-style: dotted"></i>bỏ qua</span>
     </div>
   </div>
 
@@ -84,16 +110,52 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
-<script src="chung.js?v=2"></script>
+<script src="chung.js?v=3"></script>
+<script src="phat-hien.js?v=3"></script>
 <script>
 const $ = id => document.getElementById(id);
 const mau = [];                  // {t: ms, a: g} — để vẽ trên điện thoại
+const dau = [];                  // {t, loai} — vạch sự kiện trên biểu đồ
 let choGui = [];                 // mẫu chưa gửi, gom lại gửi mỗi 100 ms
 let dangDo = false, giaLapTimer = null, khoaMan = null, lanCuoiCoMau = 0, henKiem = null, soGui = 0;
 
 $('linkGiamSat').href = 'giam-sat.html' + location.search;
 
 const client = ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; });
+
+function gui(chuDe, noiDung, qos = 1) {
+  if (client && client.connected) client.publish(KENH + '/' + chuDe, JSON.stringify({ ts: Date.now(), ...noiDung }), { qos });
+}
+
+// ---------- bộ phát hiện ----------
+const boPhatHien = new BoPhatHien(khiCoSuKien);
+$('kiemTuThe').addEventListener('change', e => { boPhatHien.kiemTuThe = e.target.checked; });
+
+function khiCoSuKien(s) {
+  dau.push({ t: s.t, loai: s.loai });
+  $('chuPhatHien').textContent = 'Bộ phát hiện: ' + moTaSuKien(s);
+  if (s.loai === 'va-cham') return;
+  const li = document.createElement('li');
+  li.textContent = new Date().toLocaleTimeString('vi-VN') + ' — ' + moTaSuKien(s);
+  if (s.loai === 'te') li.className = 'te';
+  $('nhatKyPhatHien').prepend(li);
+  while ($('nhatKyPhatHien').children.length > 6) $('nhatKyPhatHien').lastChild.remove();
+
+  // truoc = bao nhiêu ms trước lúc gửi thì va chạm xảy ra — để trang giám sát đặt vạch đúng chỗ
+  const chiTiet = { dinh: s.dinh, doLech: s.doLech, goc: s.goc, lyDo: s.lyDo, truoc: performance.now() - s.tVa, truocKetLuan: performance.now() - s.t };
+  if (s.loai === 'te') {
+    gui('canh-bao', { loai: 'te', noiDung: 'Phát hiện té ngã', ...chiTiet });
+    $('chuBaoTe').textContent = moTaSuKien(s) + '. Đã gửi cảnh báo lên máy tính.';
+    $('baoTe').classList.add('hien');
+  } else {
+    gui('su-kien', { loai: 'bo-qua', ...chiTiet });
+  }
+}
+
+$('toiOn').addEventListener('click', () => {
+  gui('canh-bao', { loai: 'huy', noiDung: 'Người dùng bấm "Tôi ổn" — huỷ cảnh báo' });
+  $('baoTe').classList.remove('hien');
+});
 
 // Gom mẫu 100 ms một gói: {ts: giờ đồng hồ lúc gửi, dt: khoảng cách mẫu (ms), a: [g, …]}
 setInterval(() => {
@@ -106,7 +168,7 @@ setInterval(() => {
 
 $('thuCanhBao').addEventListener('click', () => {
   if (!client || !client.connected) { baoTrangThai('Chưa nối được broker nên chưa gửi được cảnh báo.', true); return; }
-  client.publish(KENH + '/canh-bao', JSON.stringify({ ts: Date.now(), loai: 'thu', noiDung: 'Cảnh báo thử từ điện thoại' }), { qos: 1 });
+  gui('canh-bao', { loai: 'thu', noiDung: 'Cảnh báo thử từ điện thoại' });
   baoTrangThai('Đã gửi cảnh báo thử lên máy tính.');
 });
 
@@ -115,17 +177,19 @@ function baoTrangThai(chu, loi = false) {
   $('trangThai').classList.toggle('loi', loi);
 }
 
-function themMau(t, a) {
-  const p = { t, a };
+// x, y, z theo g — bộ phát hiện cần cả hướng (bước ③), biểu đồ và gói gửi chỉ cần |a|
+function themMau(t, x, y, z) {
+  const p = { t, a: Math.hypot(x, y, z) };
   mau.push(p); choGui.push(p);
   lanCuoiCoMau = t;
-  catMau(mau, t);
+  catMau(mau, t); catMau(dau, t);
+  boPhatHien.them(t, x, y, z);
 }
 
 function khiCoChuyenDong(e) {
   const g = e.accelerationIncludingGravity;
   if (!g || g.x == null) return;
-  themMau(performance.now(), Math.hypot(g.x, g.y, g.z) / G);
+  themMau(performance.now(), g.x / G, g.y / G, g.z / G);
 }
 
 async function giuManSang() {
@@ -160,27 +224,33 @@ async function batDau() {
   }, 2000);
 }
 
-// Tín hiệu giả: đi bộ ~1,8 bước/s, cứ 12 s có một cú "té": rơi tự do → va chạm → nằm yên
+// Tín hiệu giả, chu kỳ 24 s: đứng thì trọng lực nằm trên trục y, nằm thì trên trục z.
+//   0–12 s: đi bộ → rơi tự do → va chạm → nằm yên (TÉ — phải báo)
+//  12–24 s: đi bộ → vung tay mạnh ~1 s → đi tiếp (LẮC — phải bỏ qua)
 function giaLap() {
   dungHet();
   const t0 = performance.now();
+  const n = () => Math.random() - 0.5;
   giaLapTimer = setInterval(() => {
-    const t = (performance.now() - t0) / 1000, pha = t % 12;
-    let a;
-    if (pha < 8)          a = 1 + 0.28 * Math.sin(2 * Math.PI * 1.8 * t) + 0.06 * (Math.random() - 0.5);
-    else if (pha < 8.35)  a = 0.25 + 0.05 * Math.random();                      // rơi tự do
-    else if (pha < 8.5)   a = 3.2 + 0.8 * Math.random();                        // va chạm
-    else if (pha < 8.8)   a = 1 + 0.9 * Math.sin(40 * t) * Math.exp(-(pha - 8.5) * 8); // dội
-    else                  a = 1 + 0.015 * (Math.random() - 0.5);                // nằm yên
-    themMau(performance.now(), a);
+    const t = (performance.now() - t0) / 1000, pha = t % 24;
+    const diBo = () => [0.05 * n(), 1 + 0.28 * Math.sin(2 * Math.PI * 1.8 * t) + 0.06 * n(), 0.05 * n()];
+    let v;
+    if (pha < 8 || (pha >= 12 && pha < 19) || pha >= 20) v = diBo();
+    else if (pha < 8.35)  v = [0.1 * n(), 0.25, 0.05 * n()];                           // rơi tự do
+    else if (pha < 8.5)   v = [1.8 + n(), 1.5 + n(), 2.2 + n()];                       // va chạm
+    else if (pha < 8.8)   v = [0.02 * n(), 0.02 * n(), 1 + 0.9 * Math.sin(40 * t) * Math.exp(-(pha - 8.5) * 8)]; // dội
+    else if (pha < 12)    v = [0.01 * n(), 0.01 * n(), 1 + 0.015 * n()];               // nằm yên
+    else                  v = [3.5 * Math.sin(2 * Math.PI * 4 * t), 1 + 4 * Math.sin(2 * Math.PI * 4 * t + 1), 0.5 * n()]; // vung tay
+    themMau(performance.now(), ...v);
   }, 1000 / 60);
-  batDauChung('Đang giả lập 60 Hz — mỗi 12 s có một cú té giả.');
+  batDauChung('Đang giả lập 60 Hz — chu kỳ 24 s: một cú té giả, rồi một lần vung tay mạnh.');
 }
 
 function batDauChung(chu) {
   dangDo = true;
   $('dung').disabled = false;
   baoTrangThai(chu);
+  $('chuPhatHien').textContent = 'Bộ phát hiện: đang canh (① va chạm ≥ ' + LUAT.vaCham + ' g → ② nằm yên → ③ tư thế đổi)';
   giuManSang();
 }
 
@@ -190,7 +260,9 @@ function dungHet() {
   clearTimeout(henKiem);
   if (khoaMan) { khoaMan.release().catch(() => {}); khoaMan = null; }
   dangDo = false;
-  mau.length = 0; choGui = [];
+  mau.length = 0; dau.length = 0; choGui = [];
+  boPhatHien.datLai();
+  $('chuPhatHien').textContent = 'Bộ phát hiện: chưa chạy';
   $('dung').disabled = true;
 }
 
@@ -199,7 +271,7 @@ $('giaLap').addEventListener('click', giaLap);
 $('dung').addEventListener('click', () => { dungHet(); baoTrangThai('Đã dừng.'); });
 
 function ve() {
-  const dinh = veBieuDo($('bieuDo'), mau);
+  const dinh = veBieuDo($('bieuDo'), mau, dau);
   if (mau.length > 1) {
     const cuoi = mau[mau.length - 1];
     $('soHienTai').innerHTML = cuoi.a.toFixed(2) + ' <small>g</small>';

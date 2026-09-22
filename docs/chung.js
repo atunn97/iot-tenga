@@ -2,7 +2,7 @@
 
 const G = 9.80665;
 const CUA_SO_GIAY = 10;          // biểu đồ hiển thị 10 s gần nhất
-const NGUONG_TAM = 2.5;          // chỉ để vẽ, chưa dùng để phát hiện
+const NGUONG_TAM = 2.5;          // vạch ① va chạm trên biểu đồ — khớp LUAT.vaCham trong phat-hien.js
 
 // Broker MQTT công cộng, nói chuyện qua WebSocket có mã hoá (wss) — trang HTTPS chỉ được dùng wss.
 // ?broker=1 để đổi sang broker dự phòng nếu broker chính trục trặc lúc demo.
@@ -39,7 +39,8 @@ function ketNoiMqtt(trangThai, khiCoTin) {
 function mauCss(ten) { return getComputedStyle(document.documentElement).getPropertyValue(ten).trim(); }
 
 // Vẽ |a| của 10 s gần nhất. mau = [{t: performance.now() ms, a: g}]. Trả về đỉnh trong cửa sổ.
-function veBieuDo(canvas, mau) {
+// dau = [{t, loai}] — vạch dọc đánh dấu sự kiện của bộ phát hiện: va-cham (vàng) · te (đỏ) · bo-qua (xám)
+function veBieuDo(canvas, mau, dau = []) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -73,6 +74,15 @@ function veBieuDo(canvas, mau) {
   };
   duongNgang(1, mauCss('--xanh'));
   duongNgang(NGUONG_TAM, mauCss('--do'));
+
+  const mauDau = { 'va-cham': '--vang', te: '--do', 'bo-qua': '--phu' };
+  for (const d of dau) {
+    const x = X(d.t);
+    if (x < trai || x > trai + rong) continue;
+    ctx.save(); ctx.strokeStyle = mauCss(mauDau[d.loai] || '--phu'); ctx.lineWidth = d.loai === 'te' ? 3 : 1.5;
+    if (d.loai !== 'te') ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, tren); ctx.lineTo(x, tren + cao); ctx.stroke(); ctx.restore();
+  }
 
   if (mau.length > 1) {
     ctx.save();
