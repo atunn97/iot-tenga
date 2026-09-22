@@ -20,7 +20,7 @@ function ketNoiMqtt(trangThai, khiCoTin) {
   if (typeof mqtt === 'undefined') { trangThai('loi', 'không tải được thư viện MQTT (mất mạng?)'); return null; }
   const client = mqtt.connect(BROKER_DUNG.url, {
     clientId: 'tenga-' + Math.random().toString(16).slice(2, 10),
-    clean: true, connectTimeout: 8000, reconnectPeriod: 3000,
+    clean: true, connectTimeout: 20000, reconnectPeriod: 2000,
   });
   trangThai('dang', 'đang nối ' + BROKER_DUNG.ten + '…');
   client.on('connect', () => {
