@@ -9,11 +9,11 @@
 <style>
   :root {
     --nen: #f5f7fb; --the: #ffffff; --chu: #16202e; --phu: #5b6778; --vien: #dde3ec;
-    --lam: #1f6feb; --do: #d93025; --xanh: #188038; --luoi: #e6ebf2;
+    --lam: #1f6feb; --do: #d93025; --xanh: #188038; --vang: #b06d00; --luoi: #e6ebf2;
   }
   @media (prefers-color-scheme: dark) {
     :root { --nen: #0f141b; --the: #18202b; --chu: #e8edf4; --phu: #9aa6b6; --vien: #2a3442;
-      --lam: #5b9dff; --do: #ff6b5e; --xanh: #4cc36f; --luoi: #222c39; }
+      --lam: #5b9dff; --do: #ff6b5e; --xanh: #4cc36f; --vang: #f0b44c; --luoi: #222c39; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--nen); color: var(--chu);
@@ -26,9 +26,13 @@
   button { min-height: 50px; padding: 0 18px; border-radius: 12px; font: inherit; font-weight: 700;
     border: 1.5px solid var(--lam); background: var(--lam); color: #fff; }
   button.phu { background: transparent; color: var(--lam); }
+  button.do { background: transparent; color: var(--do); border-color: var(--do); }
   button:disabled { opacity: .4; }
-  .trang-thai { font-size: 14px; color: var(--phu); min-height: 20px; margin-bottom: 10px; }
+  .trang-thai { font-size: 14px; color: var(--phu); min-height: 20px; margin-bottom: 6px; }
   .trang-thai.loi { color: var(--do); font-weight: 600; }
+  .mang { font-size: 13px; color: var(--phu); margin-bottom: 12px; }
+  .cham { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--phu); margin-right: 6px; }
+  .cham.ok { background: var(--xanh); } .cham.dang { background: var(--vang); } .cham.loi { background: var(--do); }
   .so { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
   .o { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 12px; }
   .o .nhan { font-size: 12px; color: var(--phu); }
@@ -40,19 +44,22 @@
   .chu-giai i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
   .ghi-chu { font-size: 13px; color: var(--phu); margin-top: 14px; }
   .ghi-chu code { font-size: 12px; }
+  a { color: var(--lam); }
 </style>
 </head>
 <body>
 <main>
-  <h1>Phát hiện té ngã — trang 1</h1>
-  <p class="mo-ta">Đọc gia tốc kế của iPhone và vẽ độ lớn gia tốc |a| theo thời gian thực. Chưa có bộ phát hiện — đây là bước kiểm cảm biến và đơn vị.</p>
+  <h1>Phát hiện té ngã — điện thoại</h1>
+  <p class="mo-ta">Đọc gia tốc kế, vẽ độ lớn gia tốc |a| và gửi lên trang giám sát trên máy tính qua MQTT. Chưa có bộ phát hiện — đây là bước nối cảm biến với mạng.</p>
 
   <div class="nut">
     <button id="batDau">Bắt đầu đo</button>
     <button id="giaLap" class="phu">Giả lập (không cần cảm biến)</button>
     <button id="dung" class="phu" disabled>Dừng</button>
+    <button id="thuCanhBao" class="do">Thử cảnh báo</button>
   </div>
   <div id="trangThai" class="trang-thai">Bấm "Bắt đầu đo" và cho phép truy cập chuyển động.</div>
+  <div class="mang"><span id="chamMang" class="cham"></span><span id="chuMang">chưa nối mạng</span> · đã gửi <b id="soGui">0</b> gói</div>
 
   <div class="so">
     <div class="o"><div class="nhan">|a| hiện tại</div><div class="gt" id="soHienTai">—</div></div>
@@ -70,20 +77,38 @@
   </div>
 
   <p class="ghi-chu">
+    Trang giám sát trên máy tính: <a id="linkGiamSat" href="giam-sat.html">giam-sat.html</a> — mở cùng mã kênh là thấy biểu đồ này truyền sang.<br>
     |a| = √(ax² + ay² + az²), lấy từ <code>accelerationIncludingGravity</code> (m/s²) rồi chia 9,80665 để ra g.
     Đứng yên thì |a| ≈ 1 g vì cảm biến luôn đo trọng lực. Rơi tự do thì |a| tụt về gần 0, va chạm thì vọt lên vài g.
   </p>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script src="chung.js"></script>
 <script>
-const G = 9.80665;
-const CUA_SO_GIAY = 10;          // biểu đồ hiển thị 10 s gần nhất
-const NGUONG_TAM = 2.5;          // chỉ để vẽ, chưa dùng để phát hiện
-const mau = [];                  // {t: ms, a: g}
-
 const $ = id => document.getElementById(id);
-const canvas = $('bieuDo'), ctx = canvas.getContext('2d');
-let dangDo = false, giaLapTimer = null, khoaMan = null, lanCuoiCoMau = 0, henKiem = null;
+const mau = [];                  // {t: ms, a: g} — để vẽ trên điện thoại
+let choGui = [];                 // mẫu chưa gửi, gom lại gửi mỗi 100 ms
+let dangDo = false, giaLapTimer = null, khoaMan = null, lanCuoiCoMau = 0, henKiem = null, soGui = 0;
+
+$('linkGiamSat').href = 'giam-sat.html' + location.search;
+
+const client = ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; });
+
+// Gom mẫu 100 ms một gói: {ts: giờ đồng hồ lúc gửi, dt: khoảng cách mẫu (ms), a: [g, …]}
+setInterval(() => {
+  if (!choGui.length || !client || !client.connected) { choGui = []; return; }
+  const dt = choGui.length > 1 ? (choGui[choGui.length - 1].t - choGui[0].t) / (choGui.length - 1) : 1000 / 60;
+  client.publish(KENH + '/a', JSON.stringify({ ts: Date.now(), dt: +dt.toFixed(2), a: choGui.map(p => +p.a.toFixed(3)) }), { qos: 0 });
+  choGui = [];
+  $('soGui').textContent = ++soGui;
+}, 100);
+
+$('thuCanhBao').addEventListener('click', () => {
+  if (!client || !client.connected) { baoTrangThai('Chưa nối được broker nên chưa gửi được cảnh báo.', true); return; }
+  client.publish(KENH + '/canh-bao', JSON.stringify({ ts: Date.now(), loai: 'thu', noiDung: 'Cảnh báo thử từ điện thoại' }), { qos: 1 });
+  baoTrangThai('Đã gửi cảnh báo thử lên máy tính.');
+});
 
 function baoTrangThai(chu, loi = false) {
   $('trangThai').textContent = chu;
@@ -91,16 +116,16 @@ function baoTrangThai(chu, loi = false) {
 }
 
 function themMau(t, a) {
-  mau.push({ t, a });
+  const p = { t, a };
+  mau.push(p); choGui.push(p);
   lanCuoiCoMau = t;
-  while (mau.length && t - mau[0].t > CUA_SO_GIAY * 1000) mau.shift();
+  catMau(mau, t);
 }
 
 function khiCoChuyenDong(e) {
   const g = e.accelerationIncludingGravity;
   if (!g || g.x == null) return;
-  const a = Math.hypot(g.x, g.y, g.z) / G;
-  themMau(performance.now(), a);
+  themMau(performance.now(), Math.hypot(g.x, g.y, g.z) / G);
 }
 
 async function giuManSang() {
@@ -165,7 +190,7 @@ function dungHet() {
   clearTimeout(henKiem);
   if (khoaMan) { khoaMan.release().catch(() => {}); khoaMan = null; }
   dangDo = false;
-  mau.length = 0;
+  mau.length = 0; choGui = [];
   $('dung').disabled = true;
 }
 
@@ -173,48 +198,9 @@ $('batDau').addEventListener('click', batDau);
 $('giaLap').addEventListener('click', giaLap);
 $('dung').addEventListener('click', () => { dungHet(); baoTrangThai('Đã dừng.'); });
 
-function mauCss(ten) { return getComputedStyle(document.documentElement).getPropertyValue(ten).trim(); }
-
 function ve() {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  const trai = 34, duoi = 18, tren = 6, rong = w - trai - 6, cao = h - duoi - tren;
-  const dinh = mau.reduce((m, p) => Math.max(m, p.a), 0);
-  const yMax = Math.max(4, Math.ceil(dinh + 0.5));
-  const Y = a => tren + cao * (1 - a / yMax);
-  const bay = performance.now();
-  const X = t => trai + rong * (1 - (bay - t) / (CUA_SO_GIAY * 1000));
-
-  ctx.font = '11px -apple-system, Segoe UI, sans-serif';
-  ctx.fillStyle = mauCss('--phu'); ctx.strokeStyle = mauCss('--luoi'); ctx.lineWidth = 1;
-  for (let g = 0; g <= yMax; g++) {
-    ctx.beginPath(); ctx.moveTo(trai, Y(g)); ctx.lineTo(trai + rong, Y(g)); ctx.stroke();
-    ctx.fillText(g + ' g', 4, Y(g) + 4);
-  }
-  for (let s = 0; s <= CUA_SO_GIAY; s += 2) {
-    const con = CUA_SO_GIAY - s;
-    ctx.textAlign = con === 0 ? 'right' : 'center';
-    ctx.fillText(con === 0 ? 'bây giờ' : '−' + con + 's', X(bay - con * 1000), h - 4);
-  }
-  ctx.textAlign = 'left';
-
-  const duongNgang = (a, mau_, net) => {
-    ctx.save(); ctx.setLineDash(net); ctx.strokeStyle = mau_; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(trai, Y(a)); ctx.lineTo(trai + rong, Y(a)); ctx.stroke(); ctx.restore();
-  };
-  duongNgang(1, mauCss('--xanh'), [5, 4]);
-  duongNgang(NGUONG_TAM, mauCss('--do'), [5, 4]);
-
+  const dinh = veBieuDo($('bieuDo'), mau);
   if (mau.length > 1) {
-    ctx.strokeStyle = mauCss('--lam'); ctx.lineWidth = 2; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    mau.forEach((p, i) => i ? ctx.lineTo(X(p.t), Y(p.a)) : ctx.moveTo(X(p.t), Y(p.a)));
-    ctx.stroke();
-
     const cuoi = mau[mau.length - 1];
     $('soHienTai').innerHTML = cuoi.a.toFixed(2) + ' <small>g</small>';
     $('soDinh').innerHTML = dinh.toFixed(2) + ' <small>g</small>';

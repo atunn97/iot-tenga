@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giám sát té ngã</title>
+<style>
+  :root {
+    --nen: #f5f7fb; --the: #ffffff; --chu: #16202e; --phu: #5b6778; --vien: #dde3ec;
+    --lam: #1f6feb; --do: #d93025; --xanh: #188038; --vang: #b06d00; --luoi: #e6ebf2; --nen-do: #fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --nen: #0f141b; --the: #18202b; --chu: #e8edf4; --phu: #9aa6b6; --vien: #2a3442;
+      --lam: #5b9dff; --do: #ff6b5e; --xanh: #4cc36f; --vang: #f0b44c; --luoi: #222c39; --nen-do: #3a1714; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--nen); color: var(--chu);
+    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .mang { font-size: 14px; color: var(--phu); }
+  .cham { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--phu); margin-right: 6px; }
+  .cham.ok { background: var(--xanh); } .cham.dang { background: var(--vang); } .cham.loi { background: var(--do); }
+  button { min-height: 44px; padding: 0 16px; border-radius: 10px; font: inherit; font-weight: 700;
+    border: 1.5px solid var(--lam); background: transparent; color: var(--lam); cursor: pointer; }
+  button.chinh { background: var(--lam); color: #fff; }
+  .canh-bao { display: none; background: var(--nen-do); border: 2px solid var(--do); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 14px; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .canh-bao.hien { display: flex; animation: nhay 1s steps(2, start) infinite; }
+  .canh-bao .lon { font-size: 26px; font-weight: 800; color: var(--do); }
+  .canh-bao .nho { color: var(--chu); }
+  .canh-bao button { border-color: var(--do); color: #fff; background: var(--do); }
+  @keyframes nhay { 50% { border-color: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .canh-bao.hien { animation: none; } }
+  .so { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 640px) { .so { grid-template-columns: repeat(2, 1fr); } }
+  .o { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 12px; }
+  .o .nhan { font-size: 12px; color: var(--phu); }
+  .o .gt { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .o .gt small { font-size: 13px; font-weight: 600; color: var(--phu); }
+  .tin-hieu { font-size: 14px; margin-bottom: 10px; }
+  .bieu-do { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 8px; }
+  canvas { display: block; width: 100%; height: 320px; }
+  .chu-giai { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--phu); margin: 6px 4px 0; }
+  .chu-giai i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  ol { margin: 0; padding-left: 22px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .trong { color: var(--phu); font-size: 14px; }
+  .ghi-chu { font-size: 13px; color: var(--phu); margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Trung tâm giám sát té ngã</h1>
+      <div class="mang"><span id="chamMang" class="cham"></span><span id="chuMang">chưa nối mạng</span></div>
+    </div>
+    <button id="batAm" class="chinh">Bật âm thanh cảnh báo</button>
+  </header>
+
+  <div id="canhBao" class="canh-bao" role="alert">
+    <div>
+      <div class="lon">⚠ CẢNH BÁO TÉ NGÃ</div>
+      <div class="nho" id="chuCanhBao"></div>
+    </div>
+    <button id="daXuLy">Đã xử lý</button>
+  </div>
+
+  <div class="tin-hieu"><span id="chamTin" class="cham"></span><span id="chuTin">Chưa có tín hiệu từ điện thoại — mở trang điện thoại và bấm "Bắt đầu đo".</span></div>
+
+  <div class="so">
+    <div class="o"><div class="nhan">|a| hiện tại</div><div class="gt" id="soHienTai">—</div></div>
+    <div class="o"><div class="nhan">đỉnh 10 s qua</div><div class="gt" id="soDinh">—</div></div>
+    <div class="o"><div class="nhan">tần số nhận</div><div class="gt" id="soTanSo">—</div></div>
+    <div class="o"><div class="nhan">độ trễ mạng ≈</div><div class="gt" id="soTre">—</div></div>
+  </div>
+
+  <div class="bieu-do">
+    <canvas id="bieuDo"></canvas>
+    <div class="chu-giai">
+      <span><i style="border-color: var(--lam)"></i>|a| (g) nhận từ điện thoại</span>
+      <span><i style="border-color: var(--xanh); border-top-style: dashed"></i>1 g — đứng yên</span>
+      <span><i style="border-color: var(--do); border-top-style: dashed"></i>ngưỡng va chạm (tạm, 2,5 g)</span>
+    </div>
+  </div>
+
+  <h2>Nhật ký cảnh báo</h2>
+  <ol id="nhatKy"><li class="trong">Chưa có cảnh báo nào.</li></ol>
+
+  <p class="ghi-chu">
+    Đường đi: iPhone đo gia tốc → gom 100 ms một gói → MQTT (broker công cộng, qua wss) → trang này vẽ lại.
+    Độ trễ = giờ nhận trên máy này − giờ gửi trên điện thoại, nên lệch theo độ chênh đồng hồ giữa hai máy (thường dưới 0,1 s).
+    Bộ phát hiện té chưa có: cảnh báo hiện giờ chỉ đến từ nút "Thử cảnh báo" trên điện thoại.
+  </p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script src="chung.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const mau = [];                    // {t: giờ nhận trên máy này (ms), a: g}
+const goiGanDay = [];              // {t, n} — để tính tần số nhận
+const treGanDay = [];              // ms
+let lanNhanCuoi = 0, amThanh = null, coiTimer = null, nhatKyTrong = true;
+
+ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; }, khiCoTin);
+
+function khiCoTin(loai, goi) {
+  const bay = performance.now();
+  if (loai === 'a' && Array.isArray(goi.a)) {
+    const n = goi.a.length, dt = goi.dt || 1000 / 60;
+    goi.a.forEach((a, i) => mau.push({ t: bay - (n - 1 - i) * dt, a }));
+    catMau(mau, bay);
+    goiGanDay.push({ t: bay, n });
+    while (goiGanDay.length && bay - goiGanDay[0].t > 2000) goiGanDay.shift();
+    treGanDay.push(Date.now() - goi.ts);
+    if (treGanDay.length > 30) treGanDay.shift();
+    lanNhanCuoi = bay;
+  } else if (loai === 'canh-bao') {
+    baoDong(goi);
+  }
+}
+
+function baoDong(goi) {
+  const gio = new Date(goi.ts || Date.now()).toLocaleTimeString('vi-VN');
+  const chu = (goi.noiDung || 'Phát hiện té ngã') + ' · lúc ' + gio;
+  $('chuCanhBao').textContent = chu;
+  $('canhBao').classList.add('hien');
+  if (nhatKyTrong) { $('nhatKy').innerHTML = ''; nhatKyTrong = false; }
+  const li = document.createElement('li');
+  li.textContent = chu;
+  $('nhatKy').prepend(li);
+  batCoi();
+}
+
+// Âm thanh: trình duyệt chỉ cho phát sau khi người dùng bấm vào trang một lần
+$('batAm').addEventListener('click', () => {
+  amThanh = amThanh || new (window.AudioContext || window.webkitAudioContext)();
+  amThanh.resume();
+  $('batAm').textContent = '🔔 Âm thanh đã bật';
+  $('batAm').classList.remove('chinh');
+});
+
+function tiengBip() {
+  if (!amThanh) return;
+  const o = amThanh.createOscillator(), g = amThanh.createGain();
+  o.type = 'square'; o.frequency.value = 880;
+  g.gain.setValueAtTime(0.15, amThanh.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, amThanh.currentTime + 0.35);
+  o.connect(g).connect(amThanh.destination);
+  o.start(); o.stop(amThanh.currentTime + 0.35);
+}
+function batCoi() { clearInterval(coiTimer); tiengBip(); coiTimer = setInterval(tiengBip, 700); }
+$('daXuLy').addEventListener('click', () => { clearInterval(coiTimer); $('canhBao').classList.remove('hien'); });
+
+function trungVi(ds) { const s = [...ds].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
+
+function ve() {
+  const bay = performance.now();
+  catMau(mau, bay);
+  const dinh = veBieuDo($('bieuDo'), mau);
+  const im = lanNhanCuoi ? (bay - lanNhanCuoi) / 1000 : Infinity;
+
+  if (im < 1.5) {
+    $('chamTin').className = 'cham ok';
+    $('chuTin').textContent = 'Đang nhận tín hiệu từ điện thoại.';
+  } else if (lanNhanCuoi) {
+    $('chamTin').className = 'cham loi';
+    $('chuTin').textContent = 'Mất tín hiệu từ điện thoại ' + Math.round(im) + ' s.';
+  }
+
+  if (mau.length && im < 1.5) {
+    $('soHienTai').innerHTML = mau[mau.length - 1].a.toFixed(2) + ' <small>g</small>';
+    $('soDinh').innerHTML = dinh.toFixed(2) + ' <small>g</small>';
+    $('soDinh').style.color = dinh >= NGUONG_TAM ? mauCss('--do') : '';
+    const n = goiGanDay.reduce((s, g) => s + g.n, 0);
+    const khoang = goiGanDay.length > 1 ? (goiGanDay[goiGanDay.length - 1].t - goiGanDay[0].t) / 1000 : 0;
+    if (khoang > 0.5) $('soTanSo').innerHTML = Math.round((n - goiGanDay[0].n) / khoang) + ' <small>Hz</small>';
+    if (treGanDay.length) $('soTre').innerHTML = Math.max(0, Math.round(trungVi(treGanDay))) + ' <small>ms</small>';
+  } else {
+    ['soHienTai', 'soDinh', 'soTanSo', 'soTre'].forEach(id => { $(id).textContent = '—'; $(id).style.color = ''; });
+  }
+  requestAnimationFrame(ve);
+}
+requestAnimationFrame(ve);
+</script>
+</body>
+</html>
