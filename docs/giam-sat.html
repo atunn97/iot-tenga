@@ -104,8 +104,8 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
-<script src="chung.js?v=4"></script>
-<script src="phat-hien.js?v=4"></script>
+<script src="chung.js?v=5"></script>
+<script src="phat-hien.js?v=5"></script>
 <script>
 const $ = id => document.getElementById(id);
 const mau = [];                    // {t: giờ nhận trên máy này (ms), a: g}
@@ -113,7 +113,7 @@ const dau = [];                    // {t, loai} — vạch sự kiện trên bi�
 const goiGanDay = [];              // {t, n} — để tính tần số nhận
 const treGanDay = [];              // ms
 const dem = { te: 0, 'bo-qua': 0, huy: 0 };
-let lanNhanCuoi = 0, amThanh = null, coiTimer = null, nhatKyTrong = true;
+let lanNhanCuoi = 0, amThanh = null, coiTimer = null, nhatKyTrong = true, phienBanDT = null;
 
 ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; }, khiCoTin);
 
@@ -133,6 +133,7 @@ function khiCoTin(chuDe, goi) {
     treGanDay.push(tre);
     if (treGanDay.length > 30) treGanDay.shift();
     lanNhanCuoi = bay;
+    phienBanDT = goi.v || null;
     return;
   }
   // sự kiện của bộ phát hiện: vạch va chạm + vạch kết luận
@@ -197,7 +198,9 @@ function ve() {
 
   if (im < 1.5) {
     $('chamTin').className = 'cham ok';
-    $('chuTin').textContent = 'Đang nhận tín hiệu từ điện thoại.';
+    $('chuTin').textContent = phienBanDT === PHIEN_BAN ? 'Đang nhận tín hiệu từ điện thoại (bản ' + PHIEN_BAN + ', có bộ phát hiện).'
+      : '⚠ Điện thoại đang chạy BẢN CŨ' + (phienBanDT ? ' (' + phienBanDT + ')' : ', chưa có bộ phát hiện') + ' — mở lại trang trên iPhone bằng link có ?v=5 ở cuối.';
+    $('chamTin').className = 'cham ' + (phienBanDT === PHIEN_BAN ? 'ok' : 'dang');
   } else if (lanNhanCuoi) {
     $('chamTin').className = 'cham loi';
     $('chuTin').textContent = 'Mất tín hiệu từ điện thoại ' + Math.round(im) + ' s.';

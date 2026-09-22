@@ -13,6 +13,7 @@ const BROKER = [
 const thamSo = new URLSearchParams(location.search);
 const MA_KENH = (thamSo.get('kenh') || 'k7q2x9').replace(/[^a-z0-9-]/gi, '');
 const KENH = 'iot-tenga/' + MA_KENH;          // KENH/a = dữ liệu |a| · KENH/canh-bao = cảnh báo
+const PHIEN_BAN = '22/09-5';                   // hiện trên cả hai trang — lệch nhau là một bên đang chạy bản cũ
 const BROKER_DUNG = BROKER[Math.min(Math.max(+thamSo.get('broker') || 0, 0), BROKER.length - 1)];
 
 // trangThai(loai, chu): loai = 'dang' | 'ok' | 'loi'

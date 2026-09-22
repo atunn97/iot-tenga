@@ -103,15 +103,15 @@
   </div>
 
   <p class="ghi-chu">
-    Trang giám sát trên máy tính: <a id="linkGiamSat" href="giam-sat.html">giam-sat.html</a> — mở cùng mã kênh là thấy biểu đồ này truyền sang.<br>
+    Phiên bản: <b id="phienBan"></b> · Trang giám sát trên máy tính: <a id="linkGiamSat" href="giam-sat.html">giam-sat.html</a> — mở cùng mã kênh là thấy biểu đồ này truyền sang.<br>
     |a| = √(ax² + ay² + az²), lấy từ <code>accelerationIncludingGravity</code> (m/s²) rồi chia 9,80665 để ra g.
     Đứng yên thì |a| ≈ 1 g vì cảm biến luôn đo trọng lực. Rơi tự do thì |a| tụt về gần 0, va chạm thì vọt lên vài g.
   </p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
-<script src="chung.js?v=4"></script>
-<script src="phat-hien.js?v=4"></script>
+<script src="chung.js?v=5"></script>
+<script src="phat-hien.js?v=5"></script>
 <script>
 const $ = id => document.getElementById(id);
 const mau = [];                  // {t: ms, a: g} — để vẽ trên điện thoại
@@ -120,6 +120,7 @@ let choGui = [];                 // mẫu chưa gửi, gom lại gửi mỗi 100
 let dangDo = false, giaLapTimer = null, khoaMan = null, lanCuoiCoMau = 0, henKiem = null, soGui = 0;
 
 $('linkGiamSat').href = 'giam-sat.html' + location.search;
+$('phienBan').textContent = PHIEN_BAN;
 
 const client = ketNoiMqtt((loai, chu) => { $('chamMang').className = 'cham ' + loai; $('chuMang').textContent = chu; });
 
@@ -161,7 +162,7 @@ $('toiOn').addEventListener('click', () => {
 setInterval(() => {
   if (!choGui.length || !client || !client.connected) { choGui = []; return; }
   const dt = choGui.length > 1 ? (choGui[choGui.length - 1].t - choGui[0].t) / (choGui.length - 1) : 1000 / 60;
-  client.publish(KENH + '/a', JSON.stringify({ ts: Date.now(), dt: +dt.toFixed(2), a: choGui.map(p => +p.a.toFixed(3)) }), { qos: 0 });
+  client.publish(KENH + '/a', JSON.stringify({ v: PHIEN_BAN, ts: Date.now(), dt: +dt.toFixed(2), a: choGui.map(p => +p.a.toFixed(3)) }), { qos: 0 });
   choGui = [];
   $('soGui').textContent = ++soGui;
 }, 100);
